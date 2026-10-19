@@ -62,9 +62,9 @@ dialog textarea{width:100%;height:220px;box-sizing:border-box;background:var(--b
 </main>
 <footer><span id="st1">No pack loaded</span><span id="st2"></span><span id="st3">Click a building, then click the map · R rotates · right-drag or drag empty space pans · wheel zooms · Esc clears</span></footer>
 <dialog id="dlg">
- <p style="margin-top:0"><b>Layout as text.</b> Copy it to keep it, or paste a saved layout and press Apply.</p>
+ <p style="margin-top:0"><b>Layout as text.</b> Copy or download it to keep it, or paste a saved layout and press Apply.</p>
  <textarea id="ta"></textarea>
- <p style="display:flex;gap:6px;margin-bottom:0"><button id="dCopy">Copy</button><button id="dApply">Apply</button><button id="dFile">Import file…</button><span class="sp"></span><button id="dClose">Close</button></p>
+ <p style="display:flex;gap:6px;margin-bottom:0"><button id="dCopy">Copy</button><button id="dDl">Download .json</button><button id="dApply">Apply</button><button id="dFile">Import file…</button><span class="sp"></span><button id="dClose">Close</button></p>
 </dialog>
 <script>
 const $=s=>document.querySelector(s), cv=$('#cv'), ctx=cv.getContext('2d');
@@ -184,6 +184,12 @@ $('#bSave').onclick=()=>{ta.value=JSON.stringify({v:1,items:P.map(({u,...o})=>o)
 $('#dClose').onclick=()=>dlg.close();
 $('#dApply').onclick=()=>{loadText(ta.value);dlg.close()};
 $('#dFile').onclick=()=>$('#file').click();
+$('#dDl').onclick=async()=>{
+ const txt=ta.value,name='colony_layout.json';let d=null;
+ try{d=window.claude&&await claude.use('downloads')}catch(e){}
+ if(d){try{await d.save({filename:name,data:txt})}catch(e){if(e.code!=='declined')alert('Could not save: '+(e.message||e.code))}return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
 $('#dCopy').onclick=async()=>{try{await navigator.clipboard.writeText(ta.value)}catch(e){ta.select();document.execCommand('copy')}};
 
 /* ---------- theme ---------- */
