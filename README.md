@@ -90,7 +90,7 @@ Your JSON is read locally in your browser. Nothing is uploaded anywhere.
 - Overlapping buildings turn **red**, and the status bar counts the overlaps.
 - Thin lines mark every block, stronger lines mark every **16 blocks** (chunk borders). Coordinates are labeled every 16.
 - Your pack and layout are remembered in the browser (`localStorage`), so a refresh keeps your work.
-- **Save / load layout** shows your layout as JSON text to copy or paste back, or you can import a file:
+- **Save / load layout** shows your layout as JSON text to copy or paste back, or you can download/import a file:
 
 ```json
 { "v": 1, "items": [
