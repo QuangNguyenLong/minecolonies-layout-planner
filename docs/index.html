@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Colony Layout Planner</title>
+<style>
+:root{--bg:#f4f3ee;--panel:#fff;--ink:#1d1d1b;--mut:#6b6a64;--line:#d6d3c8;--g1:#e7e4da;--g2:#b3af9f;--acc:#2f6fdb;--bad:#d93025;
+ color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17181a;--panel:#212326;--ink:#ecebe6;--mut:#9d9b92;--line:#3a3c40;--g1:#26282b;--g2:#4d5055;--acc:#6ea0ff;--bad:#ff6b5f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17181a;--panel:#212326;--ink:#ecebe6;--mut:#9d9b92;--line:#3a3c40;--g1:#26282b;--g2:#4d5055;--acc:#6ea0ff;--bad:#ff6b5f;color-scheme:dark}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:13px/1.35 system-ui,Arial,sans-serif;display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:14px;margin:0 8px 0 0}
+button,input,select{font:inherit;color:inherit}
+button{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 9px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+.sp{flex:1}
+main{flex:1;display:flex;min-height:0}
+aside{width:290px;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line);min-height:0}
+aside .top{padding:8px;display:flex;gap:6px;align-items:center}
+aside input[type=search]{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+aside input[type=number]{width:44px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px}
+#list{overflow:auto;flex:1;padding:0 8px 8px}
+details{margin-bottom:4px}
+summary{cursor:pointer;font-weight:600;padding:3px 0}
+.it{display:flex;width:100%;gap:6px;align-items:center;text-align:left;margin:2px 0;padding:3px 6px}
+.it.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
+.it i{width:12px;height:12px;border-radius:3px;border:1px solid #0006;flex:none}
+.it span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it em{color:var(--mut);font-style:normal}
+#wrap{flex:1;position:relative;min-width:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+footer{padding:5px 10px;background:var(--panel);border-top:1px solid var(--line);color:var(--mut);display:flex;gap:14px;flex-wrap:wrap}
+.msg{color:var(--mut);padding:12px 4px}
+dialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;width:min(560px,92vw)}
+dialog textarea{width:100%;height:220px;box-sizing:border-box;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;font:11px monospace}
+@media (max-width:720px){main{flex-direction:column}aside{width:auto;height:36%;border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header>
+ <h1>🏰 Colony Layout Planner</h1>
+ <button id="bLoad">Load pack JSON</button>
+ <button id="bRot" title="R">Rotate (R)</button>
+ <button id="bDel" title="Delete">Delete</button>
+ <button id="bUndo" title="Ctrl+Z">Undo</button>
+ <button id="bClear">Clear map</button>
+ <button id="bSave">Save / load layout</button>
+ <span class="sp"></span>
+ <button id="bZi">＋</button><button id="bZo">－</button>
+ <button id="bTheme" title="Theme">◐</button>
+ <input id="file" type="file" accept=".json,application/json" hidden>
+</header>
+<main>
+ <aside>
+  <div class="top"><input id="q" type="search" placeholder="Search buildings…"><label title="Category levels per group">depth <input id="depth" type="number" min="1" max="5" value="2"></label></div>
+  <div id="list"><div class="msg">Load a blueprint pack JSON (button above, or drop the file here) to see its buildings. Your files never leave your browser.</div></div>
+ </aside>
+ <div id="wrap"><canvas id="cv"></canvas></div>
+</main>
+<footer><span id="st1">No pack loaded</span><span id="st2"></span><span id="st3">Click a building, then click the map · R rotates · right-drag or drag empty space pans · wheel zooms · Esc clears</span></footer>
+<dialog id="dlg">
+ <p style="margin-top:0"><b>Layout as text.</b> Copy it to keep it, or paste a saved layout and press Apply.</p>
+ <textarea id="ta"></textarea>
+ <p style="display:flex;gap:6px;margin-bottom:0"><button id="dCopy">Copy</button><button id="dApply">Apply</button><button id="dFile">Import file…</button><span class="sp"></span><button id="dClose">Close</button></p>
+</dialog>
+<script>
+const $=s=>document.querySelector(s), cv=$('#cv'), ctx=cv.getContext('2d');
+let raw=null,B=[],P=[],brush=null,sel=null,mouse=null,drag=null,undo=[],uid=1,view={ox:50,oy:30,s:14};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hue=g=>{let h=0;for(const c of g)h=(h*31+c.charCodeAt(0))%360;return h};
+const col=g=>`hsl(${hue(g)} 55% 76%)`;
+const dim=o=>o.r?{w:o.z,l:o.x}:{w:o.x,l:o.z};
+const store=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}, fetchS=k=>{try{return localStorage.getItem(k)}catch(e){return null}};
+
+/* ---------- pack parsing ---------- */
+function collect(n,path,out){
+ for(const [k,b] of Object.entries(n.blueprints||{})){const s=b&&b.size;if(s&&'x' in s&&'y' in s&&'z' in s)out.push([path,k,+s.x,+s.y,+s.z]);}
+ for(const [k,c] of Object.entries(n.categories||{}))collect(c,[...path,k],out);
+}
+function parsePack(){
+ if(!raw)return;const d=Math.max(1,+$('#depth').value||2),out=[];collect(raw,[],out);
+ B=out.map(([p,k,x,y,z])=>{const rest=p.slice(d);return{g:p.length?p.slice(0,d).join(' / '):'root',n:[...rest,k].join(': '),x,y,z}});
+ renderList();$('#st1').textContent=`${(raw.displayName||'Pack')}: ${B.length} buildings`;
+}
+function renderList(){
+ const q=$('#q').value.toLowerCase().trim(),L=$('#list');
+ if(!B.length){L.innerHTML='<div class="msg">No buildings found in that file.</div>';return}
+ const gs={};B.forEach((b,i)=>{if(!q||(b.n+' '+b.g).toLowerCase().includes(q))(gs[b.g]=gs[b.g]||[]).push(i)});
+ L.innerHTML=Object.entries(gs).map(([g,ix])=>`<details ${q||Object.keys(gs).length<4?'open':''}><summary>${esc(g)} (${ix.length})</summary>${ix.map(i=>{const b=B[i];
+  return`<button class="it ${brush&&brush.i===i?'on':''}" data-i="${i}"><i style="background:${col(b.g)}"></i><span>${esc(b.n)}</span><em>${b.x}×${b.z}</em></button>`}).join('')}</details>`).join('')||'<div class="msg">No match.</div>';
+}
+$('#list').addEventListener('click',e=>{const t=e.target.closest('.it');if(!t)return;const i=+t.dataset.i;brush=brush&&brush.i===i?null:{i,b:B[i],r:false};sel=null;renderList();draw()});
+$('#q').oninput=renderList;$('#depth').onchange=parsePack;
+
+/* ---------- loading files ---------- */
+function loadText(t){
+ let d;try{d=JSON.parse(t)}catch(e){alert('That is not valid JSON.');return}
+ if(d&&Array.isArray(d.items)){snap();P=d.items.map(o=>({...o,u:uid++}));sync();return}
+ if(d&&(d.categories||d.blueprints)){raw=d;store('pack',t);parsePack();return}
+ alert('Unrecognised file: expected a blueprint pack or a saved layout.');
+}
+const readFile=f=>f&&f.text().then(loadText);
+$('#bLoad').onclick=()=>$('#file').click();
+$('#file').onchange=e=>{readFile(e.target.files[0]);e.target.value=''};
+addEventListener('dragover',e=>e.preventDefault());
+addEventListener('drop',e=>{e.preventDefault();readFile(e.dataTransfer.files[0])});
+
+/* ---------- layout state ---------- */
+const snap=()=>{undo.push(JSON.stringify(P));if(undo.length>100)undo.shift()};
+const sync=()=>{store('lay',JSON.stringify({v:1,items:P}));draw()};
+function overlaps(a,b){const A=dim(a),Bd=dim(b);return a.px<b.px+Bd.w&&b.px<a.px+A.w&&a.pz<b.pz+Bd.l&&b.pz<a.pz+A.l}
+const hit=(cx,cz)=>{for(let i=P.length-1;i>=0;i--){const p=P[i],d=dim(p);if(cx>=p.px&&cx<p.px+d.w&&cz>=p.pz&&cz<p.pz+d.l)return p}return null};
+function ghost(m){const d=dim({...brush.b,r:brush.r});return{...brush.b,r:brush.r,px:m.cx-Math.floor(d.w/2),pz:m.cz-Math.floor(d.l/2)}}
+function rotate(){
+ if(brush){brush.r=!brush.r}
+ else if(sel){snap();const d=dim(sel);sel.px+=Math.floor((d.w-d.l)/2);sel.pz+=Math.floor((d.l-d.w)/2);sel.r=!sel.r;sync();return}
+ draw();
+}
+function del(){if(!sel)return;snap();P=P.filter(p=>p!==sel);sel=null;sync()}
+function undoIt(){const s=undo.pop();if(s){P=JSON.parse(s);sel=null;sync()}}
+$('#bRot').onclick=rotate;$('#bDel').onclick=del;$('#bUndo').onclick=undoIt;
+$('#bClear').onclick=()=>{if(P.length){snap();P=[];sel=null;sync()}};
+
+/* ---------- canvas ---------- */
+function resize(){const r=$('#wrap').getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;draw()}
+new ResizeObserver(resize).observe($('#wrap'));
+function draw(){
+ const d=devicePixelRatio||1,W=cv.width/d,H=cv.height/d,s=view.s,cs=getComputedStyle(document.documentElement);
+ const g1=cs.getPropertyValue('--g1'),g2=cs.getPropertyValue('--g2'),ink=cs.getPropertyValue('--ink'),bad=cs.getPropertyValue('--bad'),acc=cs.getPropertyValue('--acc'),bg=cs.getPropertyValue('--bg');
+ ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+ const c0=Math.floor(-view.ox/s),c1=Math.ceil((W-view.ox)/s),r0=Math.floor(-view.oy/s),r1=Math.ceil((H-view.oy)/s);
+ ctx.lineWidth=1;
+ for(let i=c0;i<=c1;i++){const ch=i%16===0;if(!ch&&s<5)continue;ctx.strokeStyle=ch?g2:g1;const x=Math.round(view.ox+i*s)+.5;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+ for(let i=r0;i<=r1;i++){const ch=i%16===0;if(!ch&&s<5)continue;ctx.strokeStyle=ch?g2:g1;const y=Math.round(view.oy+i*s)+.5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+ // origin axes
+ ctx.strokeStyle=acc;ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(Math.round(view.ox)+.5,0);ctx.lineTo(Math.round(view.ox)+.5,H);ctx.moveTo(0,Math.round(view.oy)+.5);ctx.lineTo(W,Math.round(view.oy)+.5);ctx.stroke();ctx.globalAlpha=1;
+ let ov=0;
+ const box=(o,alpha,bd)=>{const q=dim(o),x=view.ox+o.px*s,y=view.oy+o.pz*s,w=q.w*s,h=q.l*s;
+  ctx.globalAlpha=alpha;ctx.fillStyle=col(o.g);ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle=bd?bad:'#000';ctx.lineWidth=bd?3:1.5;ctx.strokeRect(x+.5,y+.5,w-1,h-1);
+  if(bd){ctx.fillStyle=bad;ctx.globalAlpha=.25;ctx.fillRect(x,y,w,h)}
+  ctx.globalAlpha=1;
+  if(w>26&&s>=6){ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();const fs=Math.max(8,Math.min(13,s*.9));ctx.font=`bold ${fs}px Arial`;ctx.fillStyle='#111';ctx.fillText(o.n,x+3,y+fs+1);ctx.font=`${fs-1}px Arial`;if(h>fs*2.4)ctx.fillText(`${q.w}×${q.l}`,x+3,y+fs*2.2);ctx.restore()}
+  return[x,y,w,h]};
+ P.forEach(p=>{const bd=P.some(o=>o!==p&&overlaps(p,o));if(bd)ov++;box(p,1,bd)});
+ if(sel&&P.includes(sel)){const q=dim(sel);ctx.setLineDash([6,4]);ctx.strokeStyle=acc;ctx.lineWidth=3;ctx.strokeRect(view.ox+sel.px*s-2,view.oy+sel.pz*s-2,q.w*s+4,q.l*s+4);ctx.setLineDash([])}
+ if(brush&&mouse&&!drag){const gh=ghost(mouse);box(gh,.6,P.some(o=>overlaps(gh,o)))}
+ // ruler labels (sticky at screen edges)
+ ctx.fillStyle=ink;ctx.globalAlpha=.65;ctx.font='10px Arial';
+ if(s>=3)for(let i=Math.ceil(c0/16)*16;i<=c1;i+=16)ctx.fillText(i,view.ox+i*s+2,10);
+ if(s>=3)for(let i=Math.ceil(r0/16)*16;i<=r1;i+=16)ctx.fillText(i,2,view.oy+i*s-2);
+ ctx.globalAlpha=1;
+ $('#st2').textContent=`Placed: ${P.length} · Overlaps: ${ov}`+(mouse?` · Cell: ${mouse.cx}, ${mouse.cz}`:'')+(brush?` · Brush: ${brush.b.n} ${dim({...brush.b,r:brush.r}).w}×${dim({...brush.b,r:brush.r}).l}`:sel?` · Selected: ${sel.n}`:'');
+}
+const pos=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;return{x,y,cx:Math.floor((x-view.ox)/view.s),cz:Math.floor((y-view.oy)/view.s)}};
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('pointerdown',e=>{
+ cv.setPointerCapture(e.pointerId);const m=pos(e);mouse=m;const h=hit(m.cx,m.cz);
+ if(e.button===1||e.button===2||(!brush&&!h)){drag={t:'pan',x:e.clientX,y:e.clientY,ox:view.ox,oy:view.oy};if(e.button===0)sel=null}
+ else if(brush){snap();const g=ghost(m);P.push({u:uid++,g:g.g,n:g.n,x:g.x,y:g.y,z:g.z,r:g.r,px:g.px,pz:g.pz});sync()}
+ else{sel=h;drag={t:'move',p:h,dx:m.cx-h.px,dz:m.cz-h.pz,moved:false}}
+ draw()});
+cv.addEventListener('pointermove',e=>{
+ const m=pos(e);mouse=m;
+ if(drag&&drag.t==='pan'){view.ox=drag.ox+e.clientX-drag.x;view.oy=drag.oy+e.clientY-drag.y}
+ else if(drag&&drag.t==='move'){const nx=m.cx-drag.dx,nz=m.cz-drag.dz;if(nx!==drag.p.px||nz!==drag.p.pz){if(!drag.moved){snap();drag.moved=true}drag.p.px=nx;drag.p.pz=nz}}
+ draw()});
+cv.addEventListener('pointerup',()=>{if(drag&&drag.t==='move'&&drag.moved)sync();drag=null;draw()});
+cv.addEventListener('pointerleave',()=>{if(!drag){mouse=null;draw()}});
+function zoom(f,x,y){const ns=Math.max(3,Math.min(40,view.s*f));x=x??cv.clientWidth/2;y=y??cv.clientHeight/2;view.ox=x-(x-view.ox)*ns/view.s;view.oy=y-(y-view.oy)*ns/view.s;view.s=ns;draw()}
+cv.addEventListener('wheel',e=>{e.preventDefault();const m=pos(e);zoom(e.deltaY<0?1.12:1/1.12,m.x,m.y)},{passive:false});
+$('#bZi').onclick=()=>zoom(1.2);$('#bZo').onclick=()=>zoom(1/1.2);
+addEventListener('keydown',e=>{
+ if(/INPUT|TEXTAREA/.test(e.target.tagName))return;const k=e.key.toLowerCase();
+ if(k==='r')rotate();else if(k==='delete'||k==='backspace')del();else if(k==='escape'){brush=null;sel=null;renderList();draw()}
+ else if(k==='z'&&(e.ctrlKey||e.metaKey)){e.preventDefault();undoIt()}});
+
+/* ---------- save / load layout as text ---------- */
+const dlg=$('#dlg'),ta=$('#ta');
+$('#bSave').onclick=()=>{ta.value=JSON.stringify({v:1,items:P.map(({u,...o})=>o)});dlg.showModal()};
+$('#dClose').onclick=()=>dlg.close();
+$('#dApply').onclick=()=>{loadText(ta.value);dlg.close()};
+$('#dFile').onclick=()=>$('#file').click();
+$('#dCopy').onclick=async()=>{try{await navigator.clipboard.writeText(ta.value)}catch(e){ta.select();document.execCommand('copy')}};
+
+/* ---------- theme ---------- */
+$('#bTheme').onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme:dark)').matches;r.dataset.theme=dark?'light':'dark';draw()};
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);
+
+/* ---------- restore last session ---------- */
+const sp=fetchS('pack');if(sp)try{raw=JSON.parse(sp);parsePack()}catch(e){}
+const sl=fetchS('lay');if(sl)try{P=JSON.parse(sl).items.map(o=>({...o,u:uid++}))}catch(e){}
+resize();
+</script>
+</body>
+</html>
