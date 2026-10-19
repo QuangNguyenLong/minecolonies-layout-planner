@@ -43,15 +43,7 @@ Each style lives in its own folder under `public/minecolonies/`, and the file yo
 
 <https://github.com/tomp2/minecolonies-style-explorer/blob/main/public/minecolonies/sandstone/style_indented.json>
 
-To download it:
-
-1. Open the file on GitHub and click **Download raw file**, **or**
-2. Use the command line:
-
-```bash
-curl -L -o sandstone.json \
-  "https://raw.githubusercontent.com/tomp2/minecolonies-style-explorer/main/public/minecolonies/sandstone/style_indented.json"
-```
+To download it, open the file on GitHub and click **Download raw file**.
 
 To use another style, browse the
 [`public/minecolonies`](https://github.com/tomp2/minecolonies-style-explorer/tree/main/public/minecolonies)
