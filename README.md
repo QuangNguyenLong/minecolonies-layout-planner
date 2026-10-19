@@ -3,7 +3,7 @@
 Plan your [Minecolonies](https://minecolonies.com/) colony on a grid **before** you build it.
 Feed it a style's blueprint JSON and you get:
 
-- 🌐 **A web planner** (`docs/index.html`): pick buildings, rotate them, drop them on a grid, drag them around, spot overlaps.
+- 🌐 [**A web planner**](https://quangnguyenlong.github.io/minecolonies-layout-planner/) (`docs/index.html`): pick buildings, rotate them, drop them on a grid, drag them around, spot overlaps.
 - 📊 **An Excel workbook generator** (`src/blueprints_to_excel.py`): a building list, a color-coded palette where **1 cell = 1 block**, and an empty map to lay your colony out in.
 
 Both tools read the same JSON, so they work with **any style pack** that has the same structure.
@@ -53,7 +53,7 @@ folder, open the style you like, and download its `style_indented.json` the same
 
 ## Web planner
 
-`colony_planner.html` is a single self-contained file: no install, no server, no build step.
+`docs/index.html` is a single self-contained file: no install, no server, no build step.
 Open it in any modern browser (or [host it on GitHub Pages](#hosting-the-web-planner-on-github-pages)).
 
 ### Quick start
