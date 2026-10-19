@@ -8,6 +8,10 @@ Feed it a style's blueprint JSON and you get:
 
 Both tools read the same JSON, so they work with **any style pack** that has the same structure.
 
+Example usage:
+
+![alt text](./docs/example.png "Logo Title Text 1")
+
 > Unofficial fan tool, not affiliated with Minecolonies. Blueprint data belongs to the authors of each style.
 
 ---
