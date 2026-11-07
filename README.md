@@ -3,10 +3,14 @@
 Plan your [Minecolonies](https://minecolonies.com/) colony on a grid **before** you build it.
 Feed it a style's blueprint JSON and you get:
 
-- 🌐 **A web planner** (`docs/index.html`): pick buildings, rotate them, drop them on a grid, drag them around, spot overlaps.
+- 🌐 [**A web planner**](https://quangnguyenlong.github.io/minecolonies-layout-planner/) (`docs/index.html`): pick buildings, rotate them, drop them on a grid, drag them around, spot overlaps.
 - 📊 **An Excel workbook generator** (`src/blueprints_to_excel.py`): a building list, a color-coded palette where **1 cell = 1 block**, and an empty map to lay your colony out in.
 
 Both tools read the same JSON, so they work with **any style pack** that has the same structure.
+
+Example usage:
+
+![alt text](./docs/example.png "Logo Title Text 1")
 
 > Unofficial fan tool, not affiliated with Minecolonies. Blueprint data belongs to the authors of each style.
 
@@ -43,15 +47,7 @@ Each style lives in its own folder under `public/minecolonies/`, and the file yo
 
 <https://github.com/tomp2/minecolonies-style-explorer/blob/main/public/minecolonies/sandstone/style_indented.json>
 
-To download it:
-
-1. Open the file on GitHub and click **Download raw file**, **or**
-2. Use the command line:
-
-```bash
-curl -L -o sandstone.json \
-  "https://raw.githubusercontent.com/tomp2/minecolonies-style-explorer/main/public/minecolonies/sandstone/style_indented.json"
-```
+To download it, open the file on GitHub and click **Download raw file**.
 
 To use another style, browse the
 [`public/minecolonies`](https://github.com/tomp2/minecolonies-style-explorer/tree/main/public/minecolonies)
@@ -61,7 +57,7 @@ folder, open the style you like, and download its `style_indented.json` the same
 
 ## Web planner
 
-`colony_planner.html` is a single self-contained file: no install, no server, no build step.
+`docs/index.html` is a single self-contained file: no install, no server, no build step.
 Open it in any modern browser (or [host it on GitHub Pages](#hosting-the-web-planner-on-github-pages)).
 
 ### Quick start
@@ -94,7 +90,7 @@ Your JSON is read locally in your browser. Nothing is uploaded anywhere.
 - Overlapping buildings turn **red**, and the status bar counts the overlaps.
 - Thin lines mark every block, stronger lines mark every **16 blocks** (chunk borders). Coordinates are labeled every 16.
 - Your pack and layout are remembered in the browser (`localStorage`), so a refresh keeps your work.
-- **Save / load layout** shows your layout as JSON text to copy or paste back, or you can import a file:
+- **Save / load layout** shows your layout as JSON text to copy or paste back, or you can download/import a file:
 
 ```json
 { "v": 1, "items": [
