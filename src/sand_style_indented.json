@@ -1629,6 +1629,21 @@
             "z": 23
           }
         },
+        "stables": {
+          "back": true,
+          "blur": [
+            "UFM7Pbt6_1t7?Fj[M}j@~Uj[D*ayD+azxZWV",
+            "UFM7Pbs:_1t7?Fj[M}j@~UkBD*WCD,ayxZWV"
+          ],
+          "hutBlocks": [
+            "stables"
+          ],
+          "size": {
+            "x": 23,
+            "y": 20,
+            "z": 20
+          }
+        },
         "combatacademy": {
           "back": true,
           "blur": [

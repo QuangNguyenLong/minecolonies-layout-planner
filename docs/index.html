@@ -43,9 +43,9 @@ dialog textarea{width:100%;height:220px;box-sizing:border-box;background:var(--b
 <header>
  <h1>🏰 Colony Layout Planner</h1>
  <button id="bLoad">Load pack JSON</button>
- <button id="bRot" title="R">Rotate (R)</button>
+ <button id="bRot" title="R">Rotate ⟳</button><button id="bRotL" title="Shift+R">⟲</button><button id="bAll" title="Ctrl+A">Select all</button><button id="bPan" title="Or hold Space">✋ Pan: off</button>
  <button id="bDel" title="Delete">Delete</button>
- <button id="bUndo" title="Ctrl+Z">Undo</button>
+ <button id="bUndo" title="Ctrl+Z">Undo</button><button id="bRedo" title="Ctrl+Y">Redo</button><button id="bCopy" title="Ctrl+C">Copy</button><button id="bCut" title="Ctrl+X">Cut</button><button id="bPaste" title="Ctrl+V">Paste</button><button id="bFit" title="Zoom to fit everything">Fit</button>
  <button id="bClear">Clear map</button>
  <button id="bSave">Save / load layout</button>
  <span class="sp"></span>
@@ -60,15 +60,15 @@ dialog textarea{width:100%;height:220px;box-sizing:border-box;background:var(--b
  </aside>
  <div id="wrap"><canvas id="cv"></canvas></div>
 </main>
-<footer><span id="st1">No pack loaded</span><span id="st2"></span><span id="st3">Click a building, then click the map · R rotates · right-drag or drag empty space pans · wheel zooms · Esc clears</span></footer>
+<footer><span id="st1">No pack loaded</span><span id="st2"></span><span id="st3">Click a building, then click the map · drag a box to select a group (Shift adds) · R / Shift+R rotates the selection · Ctrl+A selects all · Ctrl+C / X / V copy, cut, paste · Ctrl+Z / Y undo, redo · Space or right-drag pans · wheel zooms (no limit) · Esc clears</span></footer>
 <dialog id="dlg">
- <p style="margin-top:0"><b>Layout as text.</b> Copy it to keep it, or paste a saved layout and press Apply.</p>
+ <p style="margin-top:0"><b>Layout as text.</b> Copy or download it to keep it, or paste a saved layout and press Apply.</p>
  <textarea id="ta"></textarea>
- <p style="display:flex;gap:6px;margin-bottom:0"><button id="dCopy">Copy</button><button id="dApply">Apply</button><button id="dFile">Import file…</button><span class="sp"></span><button id="dClose">Close</button></p>
+ <p style="display:flex;gap:6px;margin-bottom:0"><button id="dCopy">Copy</button><button id="dDl">Download .json</button><button id="dApply">Apply</button><button id="dFile">Import file…</button><span class="sp"></span><button id="dClose">Close</button></p>
 </dialog>
 <script>
 const $=s=>document.querySelector(s), cv=$('#cv'), ctx=cv.getContext('2d');
-let raw=null,B=[],P=[],brush=null,sel=null,mouse=null,drag=null,undo=[],uid=1,view={ox:50,oy:30,s:14};
+let raw=null,B=[],P=[],brush=null,S=new Set(),mode='sel',space=false,clip=null,pasting=false,redo=[],mouse=null,drag=null,undo=[],uid=1,view={ox:50,oy:30,s:14};
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const hue=g=>{let h=0;for(const c of g)h=(h*31+c.charCodeAt(0))%360;return h};
 const col=g=>`hsl(${hue(g)} 55% 76%)`;
@@ -92,13 +92,13 @@ function renderList(){
  L.innerHTML=Object.entries(gs).map(([g,ix])=>`<details ${q||Object.keys(gs).length<4?'open':''}><summary>${esc(g)} (${ix.length})</summary>${ix.map(i=>{const b=B[i];
   return`<button class="it ${brush&&brush.i===i?'on':''}" data-i="${i}"><i style="background:${col(b.g)}"></i><span>${esc(b.n)}</span><em>${b.x}×${b.z}</em></button>`}).join('')}</details>`).join('')||'<div class="msg">No match.</div>';
 }
-$('#list').addEventListener('click',e=>{const t=e.target.closest('.it');if(!t)return;const i=+t.dataset.i;brush=brush&&brush.i===i?null:{i,b:B[i],r:false};sel=null;renderList();draw()});
+$('#list').addEventListener('click',e=>{const t=e.target.closest('.it');if(!t)return;const i=+t.dataset.i;brush=brush&&brush.i===i?null:{i,b:B[i],r:false};S=new Set();pasting=false;renderList();draw()});
 $('#q').oninput=renderList;$('#depth').onchange=parsePack;
 
 /* ---------- loading files ---------- */
 function loadText(t){
  let d;try{d=JSON.parse(t)}catch(e){alert('That is not valid JSON.');return}
- if(d&&Array.isArray(d.items)){snap();P=d.items.map(o=>({...o,u:uid++}));sync();return}
+ if(d&&Array.isArray(d.items)){snap();P=d.items.map(o=>({...o,u:uid++}));S=new Set();sync();return}
  if(d&&(d.categories||d.blueprints)){raw=d;store('pack',t);parsePack();return}
  alert('Unrecognised file: expected a blueprint pack or a saved layout.');
 }
@@ -109,20 +109,46 @@ addEventListener('dragover',e=>e.preventDefault());
 addEventListener('drop',e=>{e.preventDefault();readFile(e.dataTransfer.files[0])});
 
 /* ---------- layout state ---------- */
-const snap=()=>{undo.push(JSON.stringify(P));if(undo.length>100)undo.shift()};
+const snap=()=>{undo.push(JSON.stringify(P));if(undo.length>200)undo.shift();redo=[]};
 const sync=()=>{store('lay',JSON.stringify({v:1,items:P}));draw()};
 function overlaps(a,b){const A=dim(a),Bd=dim(b);return a.px<b.px+Bd.w&&b.px<a.px+A.w&&a.pz<b.pz+Bd.l&&b.pz<a.pz+A.l}
 const hit=(cx,cz)=>{for(let i=P.length-1;i>=0;i--){const p=P[i],d=dim(p);if(cx>=p.px&&cx<p.px+d.w&&cz>=p.pz&&cz<p.pz+d.l)return p}return null};
 function ghost(m){const d=dim({...brush.b,r:brush.r});return{...brush.b,r:brush.r,px:m.cx-Math.floor(d.w/2),pz:m.cz-Math.floor(d.l/2)}}
-function rotate(){
- if(brush){brush.r=!brush.r}
- else if(sel){snap();const d=dim(sel);sel.px+=Math.floor((d.w-d.l)/2);sel.pz+=Math.floor((d.l-d.w)/2);sel.r=!sel.r;sync();return}
- draw();
+function rotItems(G,ccw){   // rotate a group 90 deg, pivoting on its top-left corner (exactly reversible)
+ let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9;
+ G.forEach(p=>{const d=dim(p);x0=Math.min(x0,p.px);z0=Math.min(z0,p.pz);x1=Math.max(x1,p.px+d.w);z1=Math.max(z1,p.pz+d.l)});
+ const W=x1-x0,H=z1-z0;
+ G.forEach(p=>{const d=dim(p),u=p.px-x0,v=p.pz-z0;
+  if(ccw){p.px=x0+v;p.pz=z0+W-u-d.w}else{p.px=x0+H-v-d.l;p.pz=z0+u}
+  p.r=!p.r});
 }
-function del(){if(!sel)return;snap();P=P.filter(p=>p!==sel);sel=null;sync()}
-function undoIt(){const s=undo.pop();if(s){P=JSON.parse(s);sel=null;sync()}}
-$('#bRot').onclick=rotate;$('#bDel').onclick=del;$('#bUndo').onclick=undoIt;
-$('#bClear').onclick=()=>{if(P.length){snap();P=[];sel=null;sync()}};
+function rotate(ccw){
+ if(brush){brush.r=!brush.r;draw();return}
+ if(pasting&&clip){rotItems(clip,ccw);draw();return}
+ const G=[...S].filter(p=>P.includes(p));if(!G.length)return;snap();rotItems(G,ccw);sync();
+}
+function copySel(){
+ const G=[...S].filter(p=>P.includes(p));if(!G.length)return false;
+ const x0=Math.min(...G.map(p=>p.px)),z0=Math.min(...G.map(p=>p.pz));
+ clip=G.map(p=>({g:p.g,n:p.n,x:p.x,y:p.y,z:p.z,r:p.r,px:p.px-x0,pz:p.pz-z0}));return true}
+const cutSel=()=>{if(copySel())del()};
+function startPaste(){if(!clip)return;brush=null;S=new Set();pasting=true;renderList();draw()}
+function pasteOrigin(){let W=0,H=0;clip.forEach(c=>{const d=dim(c);W=Math.max(W,c.px+d.w);H=Math.max(H,c.pz+d.l)});
+ const m=mouse||{cx:Math.floor((cv.clientWidth/2-view.ox)/view.s),cz:Math.floor((cv.clientHeight/2-view.oy)/view.s)};
+ return{x:m.cx-Math.floor(W/2),z:m.cz-Math.floor(H/2)}}
+function fit(){
+ if(!P.length)return;let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9;
+ P.forEach(p=>{const d=dim(p);x0=Math.min(x0,p.px);z0=Math.min(z0,p.pz);x1=Math.max(x1,p.px+d.w);z1=Math.max(z1,p.pz+d.l)});
+ const w=cv.clientWidth,h=cv.clientHeight;view.s=Math.max(.005,Math.min(100,Math.min((w-60)/(x1-x0),(h-60)/(z1-z0))));
+ view.ox=(w-(x1-x0)*view.s)/2-x0*view.s;view.oy=(h-(z1-z0)*view.s)/2-z0*view.s;draw()}
+const selAll=()=>{S=new Set(P);draw()};
+function del(){if(!S.size)return;snap();P=P.filter(p=>!S.has(p));S=new Set();sync()}
+function undoIt(){const s=undo.pop();if(s!==undefined){redo.push(JSON.stringify(P));P=JSON.parse(s);S=new Set();sync()}}
+function redoIt(){const s=redo.pop();if(s!==undefined){undo.push(JSON.stringify(P));P=JSON.parse(s);S=new Set();sync()}}
+function togglePan(){mode=mode==='pan'?'sel':'pan';$('#bPan').textContent='✋ Pan: '+(mode==='pan'?'on':'off');$('#bPan').style.borderColor=mode==='pan'?'var(--acc)':''}
+$('#bRot').onclick=()=>rotate(false);$('#bRotL').onclick=()=>rotate(true);$('#bAll').onclick=selAll;$('#bPan').onclick=togglePan;
+$('#bDel').onclick=del;$('#bUndo').onclick=undoIt;$('#bRedo').onclick=redoIt;$('#bCopy').onclick=copySel;$('#bCut').onclick=cutSel;$('#bPaste').onclick=startPaste;$('#bFit').onclick=fit;
+$('#bClear').onclick=()=>{if(P.length){snap();P=[];S=new Set();sync()}};
 
 /* ---------- canvas ---------- */
 function resize(){const r=$('#wrap').getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;draw()}
@@ -133,8 +159,9 @@ function draw(){
  ctx.setTransform(d,0,0,d,0,0);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
  const c0=Math.floor(-view.ox/s),c1=Math.ceil((W-view.ox)/s),r0=Math.floor(-view.oy/s),r1=Math.ceil((H-view.oy)/s);
  ctx.lineWidth=1;
- for(let i=c0;i<=c1;i++){const ch=i%16===0;if(!ch&&s<5)continue;ctx.strokeStyle=ch?g2:g1;const x=Math.round(view.ox+i*s)+.5;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
- for(let i=r0;i<=r1;i++){const ch=i%16===0;if(!ch&&s<5)continue;ctx.strokeStyle=ch?g2:g1;const y=Math.round(view.oy+i*s)+.5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+ let st=s>=5?1:16;while(st*s<8)st*=2;
+ for(let i=Math.ceil(c0/st)*st;i<=c1;i+=st){const ch=i%16===0;ctx.strokeStyle=ch?g2:g1;const x=Math.round(view.ox+i*s)+.5;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+ for(let i=Math.ceil(r0/st)*st;i<=r1;i+=st){const ch=i%16===0;ctx.strokeStyle=ch?g2:g1;const y=Math.round(view.oy+i*s)+.5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
  // origin axes
  ctx.strokeStyle=acc;ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(Math.round(view.ox)+.5,0);ctx.lineTo(Math.round(view.ox)+.5,H);ctx.moveTo(0,Math.round(view.oy)+.5);ctx.lineTo(W,Math.round(view.oy)+.5);ctx.stroke();ctx.globalAlpha=1;
  let ov=0;
@@ -146,37 +173,56 @@ function draw(){
   if(w>26&&s>=6){ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();const fs=Math.max(8,Math.min(13,s*.9));ctx.font=`bold ${fs}px Arial`;ctx.fillStyle='#111';ctx.fillText(o.n,x+3,y+fs+1);ctx.font=`${fs-1}px Arial`;if(h>fs*2.4)ctx.fillText(`${q.w}×${q.l}`,x+3,y+fs*2.2);ctx.restore()}
   return[x,y,w,h]};
  P.forEach(p=>{const bd=P.some(o=>o!==p&&overlaps(p,o));if(bd)ov++;box(p,1,bd)});
- if(sel&&P.includes(sel)){const q=dim(sel);ctx.setLineDash([6,4]);ctx.strokeStyle=acc;ctx.lineWidth=3;ctx.strokeRect(view.ox+sel.px*s-2,view.oy+sel.pz*s-2,q.w*s+4,q.l*s+4);ctx.setLineDash([])}
+ if(S.size){ctx.setLineDash([6,4]);ctx.strokeStyle=acc;ctx.lineWidth=3;S.forEach(p=>{if(!P.includes(p))return;const q=dim(p);ctx.strokeRect(view.ox+p.px*s-2,view.oy+p.pz*s-2,q.w*s+4,q.l*s+4)});ctx.setLineDash([])}
+ if(drag&&drag.t==='box'){const bx=Math.min(drag.sx,drag.x),by=Math.min(drag.sy,drag.y),bw=Math.abs(drag.x-drag.sx),bh=Math.abs(drag.y-drag.sy);ctx.fillStyle=acc;ctx.globalAlpha=.15;ctx.fillRect(bx,by,bw,bh);ctx.globalAlpha=1;ctx.setLineDash([4,3]);ctx.strokeStyle=acc;ctx.lineWidth=1.5;ctx.strokeRect(bx,by,bw,bh);ctx.setLineDash([])}
  if(brush&&mouse&&!drag){const gh=ghost(mouse);box(gh,.6,P.some(o=>overlaps(gh,o)))}
+ if(pasting&&clip&&!drag){const o=pasteOrigin();clip.forEach(c=>{const gh={...c,px:c.px+o.x,pz:c.pz+o.z};box(gh,.6,P.some(q=>overlaps(gh,q)))})}
  // ruler labels (sticky at screen edges)
  ctx.fillStyle=ink;ctx.globalAlpha=.65;ctx.font='10px Arial';
- if(s>=3)for(let i=Math.ceil(c0/16)*16;i<=c1;i+=16)ctx.fillText(i,view.ox+i*s+2,10);
- if(s>=3)for(let i=Math.ceil(r0/16)*16;i<=r1;i+=16)ctx.fillText(i,2,view.oy+i*s-2);
+ let ls=16;while(ls*s<40)ls*=2;
+ for(let i=Math.ceil(c0/ls)*ls;i<=c1;i+=ls)ctx.fillText(i,view.ox+i*s+2,10);
+ for(let i=Math.ceil(r0/ls)*ls;i<=r1;i+=ls)ctx.fillText(i,2,view.oy+i*s-2);
  ctx.globalAlpha=1;
- $('#st2').textContent=`Placed: ${P.length} · Overlaps: ${ov}`+(mouse?` · Cell: ${mouse.cx}, ${mouse.cz}`:'')+(brush?` · Brush: ${brush.b.n} ${dim({...brush.b,r:brush.r}).w}×${dim({...brush.b,r:brush.r}).l}`:sel?` · Selected: ${sel.n}`:'');
+ $('#st2').textContent=`Placed: ${P.length} · Overlaps: ${ov}`+(mouse?` · Cell: ${mouse.cx}, ${mouse.cz}`:'')+(brush?` · Brush: ${brush.b.n} ${dim({...brush.b,r:brush.r}).w}×${dim({...brush.b,r:brush.r}).l}`:pasting&&clip?` · Pasting ${clip.length} (click to place, Shift keeps stamping, R rotates)`:S.size?` · Selected: ${S.size}`:'');
 }
 const pos=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;return{x,y,cx:Math.floor((x-view.ox)/view.s),cz:Math.floor((y-view.oy)/view.s)}};
 cv.addEventListener('contextmenu',e=>e.preventDefault());
 cv.addEventListener('pointerdown',e=>{
- cv.setPointerCapture(e.pointerId);const m=pos(e);mouse=m;const h=hit(m.cx,m.cz);
- if(e.button===1||e.button===2||(!brush&&!h)){drag={t:'pan',x:e.clientX,y:e.clientY,ox:view.ox,oy:view.oy};if(e.button===0)sel=null}
+ cv.setPointerCapture(e.pointerId);const m=pos(e);mouse=m;const h=hit(m.cx,m.cz),add=e.shiftKey||e.ctrlKey||e.metaKey;
+ if(e.button===1||e.button===2||space||(mode==='pan'&&!brush)){drag={t:'pan',x:e.clientX,y:e.clientY,ox:view.ox,oy:view.oy}}
+ else if(pasting&&clip){snap();const o=pasteOrigin(),ns=clip.map(c=>({...c,u:uid++,px:c.px+o.x,pz:c.pz+o.z}));P.push(...ns);S=new Set(ns);if(!e.shiftKey)pasting=false;sync()}
  else if(brush){snap();const g=ghost(m);P.push({u:uid++,g:g.g,n:g.n,x:g.x,y:g.y,z:g.z,r:g.r,px:g.px,pz:g.pz});sync()}
- else{sel=h;drag={t:'move',p:h,dx:m.cx-h.px,dz:m.cz-h.pz,moved:false}}
+ else if(h){if(add){S.has(h)?S.delete(h):S.add(h)}else if(!S.has(h))S=new Set([h]);
+  drag={t:'move',cx:m.cx,cz:m.cz,orig:[...S].map(p=>[p,p.px,p.pz]),moved:false}}
+ else{if(!add)S=new Set();drag={t:'box',sx:m.x,sy:m.y,x:m.x,y:m.y,add}}
  draw()});
 cv.addEventListener('pointermove',e=>{
  const m=pos(e);mouse=m;
  if(drag&&drag.t==='pan'){view.ox=drag.ox+e.clientX-drag.x;view.oy=drag.oy+e.clientY-drag.y}
- else if(drag&&drag.t==='move'){const nx=m.cx-drag.dx,nz=m.cz-drag.dz;if(nx!==drag.p.px||nz!==drag.p.pz){if(!drag.moved){snap();drag.moved=true}drag.p.px=nx;drag.p.pz=nz}}
+ else if(drag&&drag.t==='move'){const dx=m.cx-drag.cx,dz=m.cz-drag.cz;if(!drag.moved&&(dx||dz)){snap();drag.moved=true}if(drag.moved)drag.orig.forEach(([p,x,z])=>{p.px=x+dx;p.pz=z+dz})}
+ else if(drag&&drag.t==='box'){drag.x=m.x;drag.y=m.y}
  draw()});
-cv.addEventListener('pointerup',()=>{if(drag&&drag.t==='move'&&drag.moved)sync();drag=null;draw()});
+cv.addEventListener('pointerup',()=>{
+ if(drag&&drag.t==='move'&&drag.moved)sync();
+ if(drag&&drag.t==='box'){const s=view.s,x0=Math.floor((Math.min(drag.sx,drag.x)-view.ox)/s),x1=Math.floor((Math.max(drag.sx,drag.x)-view.ox)/s),z0=Math.floor((Math.min(drag.sy,drag.y)-view.oy)/s),z1=Math.floor((Math.max(drag.sy,drag.y)-view.oy)/s);
+  if(!drag.add)S=new Set();
+  P.forEach(p=>{const d=dim(p);if(p.px<=x1&&p.px+d.w-1>=x0&&p.pz<=z1&&p.pz+d.l-1>=z0)S.add(p)})}
+ drag=null;draw()});
 cv.addEventListener('pointerleave',()=>{if(!drag){mouse=null;draw()}});
-function zoom(f,x,y){const ns=Math.max(3,Math.min(40,view.s*f));x=x??cv.clientWidth/2;y=y??cv.clientHeight/2;view.ox=x-(x-view.ox)*ns/view.s;view.oy=y-(y-view.oy)*ns/view.s;view.s=ns;draw()}
+function zoom(f,x,y){const ns=Math.max(.005,Math.min(100,view.s*f));x=x??cv.clientWidth/2;y=y??cv.clientHeight/2;view.ox=x-(x-view.ox)*ns/view.s;view.oy=y-(y-view.oy)*ns/view.s;view.s=ns;draw()}
 cv.addEventListener('wheel',e=>{e.preventDefault();const m=pos(e);zoom(e.deltaY<0?1.12:1/1.12,m.x,m.y)},{passive:false});
 $('#bZi').onclick=()=>zoom(1.2);$('#bZo').onclick=()=>zoom(1/1.2);
 addEventListener('keydown',e=>{
- if(/INPUT|TEXTAREA/.test(e.target.tagName))return;const k=e.key.toLowerCase();
- if(k==='r')rotate();else if(k==='delete'||k==='backspace')del();else if(k==='escape'){brush=null;sel=null;renderList();draw()}
- else if(k==='z'&&(e.ctrlKey||e.metaKey)){e.preventDefault();undoIt()}});
+ if(/INPUT|TEXTAREA/.test(e.target.tagName))return;const k=e.key.toLowerCase(),mod=e.ctrlKey||e.metaKey;
+ if(k==='r'&&!mod)rotate(e.shiftKey);else if(k==='delete'||k==='backspace')del();else if(k==='escape'){brush=null;pasting=false;S=new Set();renderList();draw()}
+ else if(k==='a'&&mod){e.preventDefault();selAll()}
+ else if(k==='c'&&mod){e.preventDefault();copySel()}
+ else if(k==='x'&&mod){e.preventDefault();cutSel()}
+ else if(k==='v'&&mod){e.preventDefault();startPaste()}
+ else if(k==='y'&&mod||(k==='z'&&mod&&e.shiftKey)){e.preventDefault();redoIt()}
+ else if(k==='z'&&mod){e.preventDefault();undoIt()}
+ else if(k===' '){e.preventDefault();space=true}});
+addEventListener('keyup',e=>{if(e.key===' ')space=false});
 
 /* ---------- save / load layout as text ---------- */
 const dlg=$('#dlg'),ta=$('#ta');
@@ -184,6 +230,12 @@ $('#bSave').onclick=()=>{ta.value=JSON.stringify({v:1,items:P.map(({u,...o})=>o)
 $('#dClose').onclick=()=>dlg.close();
 $('#dApply').onclick=()=>{loadText(ta.value);dlg.close()};
 $('#dFile').onclick=()=>$('#file').click();
+$('#dDl').onclick=async()=>{
+ const txt=ta.value,name='colony_layout.json';let d=null;
+ try{d=window.claude&&await claude.use('downloads')}catch(e){}
+ if(d){try{await d.save({filename:name,data:txt})}catch(e){if(e.code!=='declined')alert('Could not save: '+(e.message||e.code))}return}
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
 $('#dCopy').onclick=async()=>{try{await navigator.clipboard.writeText(ta.value)}catch(e){ta.select();document.execCommand('copy')}};
 
 /* ---------- theme ---------- */
